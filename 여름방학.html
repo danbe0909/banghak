@@ -1177,7 +1177,8 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
           <label>✏️ 내 이름:</label>
           <span class="sv-name-display" id="svStudentNameDisplay">학생</span>
           <span style="font-size:.8rem;color:#999;margin-left:auto;">로그인된 계정으로 저장돼요 📌</span>
-          <button onclick="studentLogout()" style="margin-left:10px; background:rgba(255,255,255,0.7); border:1.5px solid rgba(255,255,255,0.9); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:bold; color:#555; cursor:pointer;">로그아웃</button>
+          <button onclick="showChangePwModal()" style="margin-left:6px; background:rgba(243,229,245,0.85); border:1.5px solid rgba(186,104,200,0.5); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:bold; color:#6a1b9a; cursor:pointer;">🔑 비번변경</button>
+          <button onclick="studentLogout()" style="margin-left:6px; background:rgba(255,255,255,0.7); border:1.5px solid rgba(255,255,255,0.9); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:bold; color:#555; cursor:pointer;">로그아웃</button>
         </div>
 
         <div class="sv-info-card">
@@ -1240,6 +1241,21 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
               <button onclick="svAddScheduleRow()" style="flex:1; background:#e8f5e9; color:#2e7d32; border:2px solid #a5d6a7; border-radius:12px; padding:9px; font-size:13px; font-weight:bold; cursor:pointer;">+ 항목 추가</button>
               <button onclick="svSaveSchedule()" style="flex:1; background:linear-gradient(135deg,#ff8e72,#ff6b4a); color:white; border:none; border-radius:12px; padding:9px; font-size:13px; font-weight:bold; cursor:pointer; box-shadow:0 3px 0 #cc4a2a;">💾 저장</button>
             </div>
+          </div>
+        </div>
+
+        <!-- 🔑 학생 비밀번호 변경 모달 -->
+        <div id="studentChangePwModal" class="modal hidden">
+          <div class="card" style="min-width:300px; max-width:92vw; position:relative; padding:24px 20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+              <h4 style="margin:0; font-size:17px; color:#6a1b9a;">🔑 비밀번호 변경</h4>
+              <button onclick="closeChangePwModal()" style="background:#eee; border:none; border-radius:50%; width:32px; height:32px; font-size:16px; cursor:pointer;">✕</button>
+            </div>
+            <p style="font-size:13px; color:#aaa; margin:0 0 14px 0;">현재 비밀번호를 확인한 후 새 비밀번호로 변경합니다.</p>
+            <input type="password" id="modalCurrentPw" placeholder="현재 비밀번호" style="margin-bottom:10px;">
+            <input type="password" id="modalNewPw" placeholder="새 비밀번호" style="margin-bottom:10px;">
+            <input type="password" id="modalNewPwConfirm" placeholder="새 비밀번호 확인" style="margin-bottom:16px;">
+            <button onclick="doStudentChangePw()" class="btn-main" style="background:linear-gradient(135deg,#9c27b0,#6a1b9a); box-shadow:0 4px 0px #4a0072;">🔒 비밀번호 변경하기</button>
           </div>
         </div>
 
@@ -3015,6 +3031,39 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
             });
         }
     }
+
+    window.showChangePwModal = function() {
+        document.getElementById('modalCurrentPw').value = '';
+        document.getElementById('modalNewPw').value = '';
+        document.getElementById('modalNewPwConfirm').value = '';
+        document.getElementById('studentChangePwModal').classList.remove('hidden');
+    };
+    window.closeChangePwModal = function() {
+        document.getElementById('studentChangePwModal').classList.add('hidden');
+    };
+    window.doStudentChangePw = async function() {
+        const currentPw = document.getElementById('modalCurrentPw').value;
+        const newPw = document.getElementById('modalNewPw').value;
+        const newPwConfirm = document.getElementById('modalNewPwConfirm').value;
+        if (!currentPw || !newPw || !newPwConfirm) return alert("모든 항목을 입력해주세요.");
+        if (newPw !== newPwConfirm) return alert("새 비밀번호가 일치하지 않습니다.");
+        if (newPw.length < 4) return alert("비밀번호는 4자리 이상 입력해주세요.");
+        if (!currentSid || !rawData[currentSid]) return alert("로그인 정보를 확인할 수 없습니다.");
+        const result = await verifyPassword(currentPw, rawData[currentSid].pw);
+        if (!result) return alert("현재 비밀번호가 일치하지 않습니다.");
+        if (confirm("비밀번호를 변경하시겠습니까?")) {
+            const newHash = await hashPassword(newPw);
+            schoolRef(`classData_v2/students/${currentSid}/pw`).set(newHash).then(() => {
+                closeChangePwModal();
+                alert("✅ 비밀번호가 성공적으로 변경되었습니다!\n다음 로그인부터 새 비밀번호를 사용하세요.");
+            });
+        }
+    };
+    // 모달 바깥 클릭 시 닫기
+    document.addEventListener('click', function(e) {
+        const modal = document.getElementById('studentChangePwModal');
+        if (modal && e.target === modal) closeChangePwModal();
+    });
 
     function executeSwitch(mode) {
         // 'summer' 탭: 로그인 안 됐으면 studentView(로그인화면) 표시, 됐으면 summerView 표시
