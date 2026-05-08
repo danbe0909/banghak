@@ -46,6 +46,9 @@
         .teacher-badge { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; padding: 3px 8px; border-radius: 8px; font-size: 11px; font-weight: bold; }
         .grade-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
         .grade-row select { margin-bottom: 0; }
+        .login-type-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+        .login-type-tab { flex: 1; border: 2px solid var(--border); background: #f1f5f9; border-radius: 12px; padding: 10px; font-size: 13px; font-weight: bold; cursor: pointer; color: #888; text-align: center; transition: 0.2s; }
+        .login-type-tab.active { background: var(--primary); color: white; border-color: var(--primary-dark); }
         .hidden { display: none !important; }
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 99999; backdrop-filter: blur(3px); }
         #adminAuthModal { background: rgba(0,0,0,0.6) !important; backdrop-filter: blur(4px) !important; align-items: flex-start; padding-top: 60px; overflow-y: auto; z-index: 99999 !important; }
@@ -149,6 +152,18 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         <button class="btn-main" style="background:#888; box-shadow:0 4px 0px #666; margin-bottom:18px; font-size:16px;" onclick="teacherLogout()">교사 모드 종료 (로그아웃)</button>
 
         <div id="superAdminPanel" class="hidden">
+
+            <!-- 📋 학교 코드 목록 (최상단) -->
+            <div class="card" style="border-color:#1976d2;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                    <h4 style="margin:0; color:#1976d2; font-size:18px;">📋 등록된 학교 코드</h4>
+                    <button onclick="loadSchoolCodeList()" style="background:#e3f2fd; border:1.5px solid #90caf9; border-radius:20px; padding:5px 14px; font-size:13px; font-weight:bold; color:#1565c0; cursor:pointer;">🔄 새로고침</button>
+                </div>
+                <div id="schoolCodeList">
+                    <p style="font-size:13px; color:#aaa; text-align:center;">불러오는 중...</p>
+                </div>
+            </div>
+
             <div class="card" style="border-color:#764ba2;">
                 <h4 style="margin:0 0 12px 0; color:#764ba2; font-size:18px;">⚙️ 관리자 설정</h4>
                 <p style="font-size:13px; color:#888; margin:0 0 12px 0;">관리자 비밀번호를 변경합니다.</p>
@@ -158,18 +173,6 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
                 </div>
             </div>
 
-            <div class="card" style="border-color:#e53935;">
-                <h4 style="margin:0 0 6px 0; color:#e53935; font-size:18px;">🗑️ 학교 코드 삭제</h4>
-                <p style="font-size:13px; color:#888; margin:0 0 14px 0;">더 이상 사용하지 않는 학교 코드와 해당 코드의 <strong>모든 데이터(학생·교사·독서기록)</strong>를 완전 삭제합니다.</p>
-                <div style="display:flex; gap:8px; margin-bottom:10px;">
-                    <input type="text" id="deleteSchoolCodeInput" placeholder="삭제할 학교 코드 입력" style="margin-bottom:0; border-color:#ffcdd2;">
-                    <button class="btn-main" style="width:90px; background:#e53935; box-shadow:0 4px 0px #b71c1c; font-size:15px; white-space:nowrap;" onclick="deleteSchoolCode()">삭제</button>
-                </div>
-                <div style="background:#fff3f3; border:1px solid #ffcdd2; border-radius:10px; padding:10px; font-size:12px; color:#c62828;">
-                    ⚠️ 삭제 후 복구 불가능합니다. 신중하게 사용하세요.
-                </div>
-                <div id="schoolCodeList" style="margin-top:14px;"></div>
-            </div>
         </div>
 
         <div id="teacherPwPanel" class="hidden">
@@ -1690,8 +1693,7 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
             const schools = snap.val();
             if (!schools) { el.innerHTML = '<p style="font-size:13px; color:#aaa; text-align:center;">등록된 학교 코드 없음</p>'; return; }
             const codes = Object.keys(schools).sort();
-            el.innerHTML = '<p style="font-size:12px; font-weight:bold; color:#888; margin:0 0 8px 0;">📋 등록된 학교 코드 목록</p>' +
-                codes.map(code => {
+            el.innerHTML = codes.map(code => {
                     const school = schools[code];
                     const teachers = school.teacherAccounts_v2 || {};
                     const teacherCount = Object.keys(teachers).length;
@@ -1816,12 +1818,6 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         }).catch(() => alert("재설정 실패. 다시 시도해주세요."));
     }
 
-    function deleteSchoolCode() {
-        const code = document.getElementById('deleteSchoolCodeInput').value.trim().replace(/\s/g,'');
-        if (!code) return alert("삭제할 학교 코드를 입력하세요.");
-        deleteSchoolCodeByKey(code);
-        document.getElementById('deleteSchoolCodeInput').value = '';
-    }
 
     function deleteSchoolCodeByKey(code) {
         if (code === currentSchoolCode) return alert("현재 로그인 중인 학교 코드는 삭제할 수 없습니다.\n먼저 다른 학교 코드로 접속하세요.");
