@@ -220,8 +220,31 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
 
 
         <div id="panelStudents">
-            <!-- 교사 계정 목록 (renderTeacherAccountList 참조용) -->
-            <div id="teacherAccountList" style="display:none;"></div>
+            <!-- 교사 계정 목록 -->
+            <div class="card" style="border-color:#b39ddb;">
+                <h4 style="margin:0 0 12px 0; color:#6a1b9a; font-size:17px;">👩‍🏫 교사 계정 관리</h4>
+                <div id="teacherAccountList"></div>
+                <hr style="border:0; border-top:2px dashed var(--border); margin:14px 0 12px 0;">
+                <h5 style="margin:0 0 10px 0; color:#6a1b9a; font-size:14px;">➕ 교사 계정 직접 등록</h5>
+                <input type="text" id="teacherMgmtName" placeholder="교사 이름 (아이디)">
+                <div class="grade-row">
+                    <select id="teacherMgmtGrade">
+                        <option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option>
+                        <option value="4">4학년</option><option value="5">5학년</option><option value="6">6학년</option>
+                    </select>
+                    <select id="teacherMgmtClass">
+                        <option value="1">1반</option><option value="2">2반</option><option value="3">3반</option>
+                        <option value="4">4반</option><option value="5">5반</option><option value="6">6반</option>
+                    </select>
+                </div>
+                <input type="password" id="teacherMgmtPw" placeholder="비밀번호">
+                <button class="btn-main" style="background:#6a1b9a; box-shadow:0 4px 0px #4a0072;" onclick="setTeacherPassword()">교사 계정 등록</button>
+            </div>
+
+            <!-- 통계 (syncHeaderAndStats 참조용) -->
+            <div id="statTotalStudents" style="display:none;"></div>
+            <div id="statTotalBooks" style="display:none;"></div>
+
             <div class="card" id="pwResetRequestSection" style="border-color:#ce93d8; display:none;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
                     <h3 style="margin:0; color:#6a1b9a; font-size:17px;">🔑 비밀번호 재설정 요청</h3>
@@ -470,11 +493,11 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         #summerView .sv-check-box { width:18px;height:18px; border:2px solid #CCC; border-radius:5px; flex-shrink:0; display:flex;align-items:center;justify-content:center; font-size:.7rem; transition:all .2s; }
         #summerView .sv-check-item.sv-done .sv-check-box { background:#4CAF50; border-color:#4CAF50; color:white; }
         #summerView .sv-book-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-bottom:20px; }
-        #summerView .sv-book-card { background:rgba(255,255,255,.95); border-radius:14px; padding:14px 10px; text-align:center; box-shadow:0 4px 14px rgba(0,100,180,.1); transition:transform .2s; cursor:pointer; }
+        #summerView .sv-book-card { background:rgba(255,255,255,.95); border-radius:14px; padding:14px 10px; text-align:center; box-shadow:0 4px 14px rgba(0,100,180,.1); transition:transform .2s; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; min-height:110px; }
         #summerView .sv-book-card:hover { transform:translateY(-4px) rotate(-1deg); }
-        #summerView .sv-book-emoji { font-size:2rem; margin-bottom:6px; }
-        #summerView .sv-book-title { font-weight:800; font-size:.78rem; color:#2D3436; margin-bottom:3px; }
-        #summerView .sv-book-genre { font-size:.68rem; padding:2px 8px; border-radius:8px; display:inline-block; }
+        #summerView .sv-book-emoji { font-size:2rem; margin-bottom:6px; flex-shrink:0; }
+        #summerView .sv-book-title { font-weight:800; font-size:.78rem; color:#2D3436; margin-bottom:3px; word-break:keep-all; overflow-wrap:break-word; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; width:100%; }
+        #summerView .sv-book-genre { font-size:.68rem; padding:2px 8px; border-radius:8px; display:inline-block; margin-top:auto; flex-shrink:0; }
         #summerView .sv-rules-card { background:linear-gradient(135deg,#667EEA 0%,#764BA2 100%); border-radius:24px; padding:22px 24px; margin-bottom:20px; box-shadow:0 8px 32px rgba(100,60,180,.3); color:white; }
         #summerView .sv-rules-title { font-family:'Jua',sans-serif; font-size:1.2rem; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
         #summerView .sv-rules-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
@@ -1160,7 +1183,10 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
     function attachSchoolListeners() {
         detachAllListeners();
 
-        const cnCb = snap => { allClassNames = snap.val() || {}; };
+        const cnCb = snap => {
+            allClassNames = snap.val() || {};
+            if (currentTeacher) syncHeaderAndStats();
+        };
         const cnRef = schoolRef('classNames_v2');
         cnRef.on('value', cnCb); _dbListeners.push({ ref: cnRef, cb: cnCb });
 
@@ -1168,11 +1194,16 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
             rawData = snap.val() || {};
             students = Object.keys(rawData).map(k => ({ id: k, ...rawData[k], isPending: false }));
             updateLoginSelect();
+            if (currentTeacher) { syncHeaderAndStats(); renderAll(); }
         };
         const stRef = schoolRef('classData_v2/students');
         stRef.on('value', stCb); _dbListeners.push({ ref: stRef, cb: stCb });
 
-        const peCb = snap => { pendingData = snap.val() || {}; updateLoginSelect(); };
+        const peCb = snap => {
+            pendingData = snap.val() || {};
+            updateLoginSelect();
+            if (currentTeacher) renderAll();
+        };
         const peRef = schoolRef('pendingStudents_v2');
         peRef.on('value', peCb); _dbListeners.push({ ref: peRef, cb: peCb });
 
@@ -1609,8 +1640,6 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         const isSuper = currentTeacher === 'super';
         document.getElementById('superAdminPanel').classList.toggle('hidden', !isSuper);
         document.getElementById('teacherPwPanel').classList.toggle('hidden', isSuper);
-        const adminPwEl = document.getElementById('adminPwSection');
-        if (adminPwEl) adminPwEl.classList.toggle('hidden', !isSuper);
 
         // 관리자는 학생/공지/학급/통계/단어장 패널 숨김
         ['teacherNoticeCard', 'teacherClassNameCard', 'teacherStatCard', 'panelStudents', 'teacherPwPanel', 'teacherEngWordCard', 'engWordEditPanel'].forEach(id => {
@@ -1895,11 +1924,14 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         if (approvedStudents.length === 0) {
             tList.innerHTML = `<p style="text-align:center; padding:20px; color:#aaa;">등록된 학생이 없습니다.</p>`;
         } else {
-            tList.innerHTML = approvedStudents.map(s => `<div class="card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div><div style="font-weight:bold; font-size:16px;">${esc(s.name)}</div>
-                        <div style="font-size:12px; color:#888; margin-top:4px;">${esc(s.grade)}학년 ${esc(s.classNum)}반</div></div>
-                        <div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end;">
+            tList.innerHTML = approvedStudents.map(s => `<div class="card" style="padding:12px 16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                        <div>
+                            <div style="font-weight:bold; font-size:15px; color:#2d3436;">${esc(s.name)}</div>
+                            <div style="font-size:12px; color:#888; margin-top:2px;">${esc(s.grade)}학년 ${esc(s.classNum)}반</div>
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:flex-end; align-items:center;">
+                            <button onclick="viewStudentPlan('${esc(s.id)}')" style="background:linear-gradient(135deg,#4fc3f7,#0288d1); color:white; border:none; border-radius:20px; padding:6px 13px; font-size:12px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(2,136,209,.3); white-space:nowrap;">👁️ 방학생활 보기</button>
                             <button class="btn-pw" onclick="showPwView('${esc(s.id)}')">🔑 비번</button>
                             <button class="btn-del" onclick="deleteStudent('${esc(s.id)}')">삭제</button>
                         </div>
@@ -2138,19 +2170,6 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         document.getElementById('tabSignup').classList.toggle('active', tab === 'signup');
     }
 
-    async function changeStudentPassword() {
-        const currentPwInput = document.getElementById('changeCurrentPw').value, newPwInput = document.getElementById('changeNewPw').value;
-        if (!currentPwInput || !newPwInput) return alert("비밀번호를 모두 입력해주세요.");
-        const result = await verifyPassword(currentPwInput, rawData[currentSid].pw); // ✅ 해시 비교
-        if (!result) return alert("현재 비밀번호가 일치하지 않습니다.");
-        if (confirm("비밀번호를 변경하시겠습니까?")) {
-            const newHash = await hashPassword(newPwInput); // ✅ 해싱 후 저장
-            schoolRef(`classData_v2/students/${currentSid}/pw`).set(newHash).then(() => {
-                alert("비밀번호가 성공적으로 변경되었습니다.");
-                document.getElementById('changeCurrentPw').value = ""; document.getElementById('changeNewPw').value = "";
-            });
-        }
-    }
 
     window.showChangePwModal = function() {
         document.getElementById('modalCurrentPw').value = '';
@@ -2266,7 +2285,6 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
         executeSwitch('summer');
         document.getElementById('schoolCodeSection').classList.remove('hidden');
         document.getElementById('loginSection').classList.add('hidden');
-        document.getElementById('writeSection').classList.add('hidden');
         document.getElementById('schoolCodeInput').value = '';
         document.getElementById('headerClassName').innerText = '학년/반을 선택해주세요';
     }
@@ -2309,6 +2327,60 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
     // (독서/녹음/차트/TOP7 관련 함수 제거됨)
     function renderNoticePreview() {} // 공지사항 기능 제거됨
     function renderStudentNotice() {} // 공지사항 기능 제거됨
+
+    // ✅ 학생 회원가입 신청
+    async function submitSignup() {
+        const n = document.getElementById('signupName').value.trim();
+        const g = document.getElementById('signupGrade').value;
+        const c = document.getElementById('signupClass').value;
+        const p = document.getElementById('signupPw').value;
+        const pc = document.getElementById('signupPwConfirm').value;
+        if (!n || !p) return alert("모든 항목을 입력해주세요.");
+        if (p !== pc) return alert("비밀번호가 일치하지 않습니다.");
+        schoolRef('teacherAccounts_v2').once('value', async snap => {
+            const accounts = snap.val() || {};
+            const hasTeacher = Object.values(accounts).some(acc =>
+                typeof acc === 'object' && String(acc.grade) === String(g) && String(acc.classNum) === String(c)
+            );
+            if (!hasTeacher) return alert(`${g}학년 ${c}반은 아직 개설되지 않은 반입니다.\n선생님께 문의해주세요.`);
+            const hashedPw = await hashPassword(p);
+            schoolRef('pendingStudents_v2').push({ name: n, grade: g, classNum: c, pw: hashedPw }).then(() => {
+                alert("가입 신청 완료! 승인을 기다려주세요.");
+                switchStudentTab('login');
+            });
+        });
+    }
+
+    // ✅ 관리자 초기 비밀번호 강제 변경
+    async function doForceAdminPwChange() {
+        const newPw = document.getElementById('forcePwNew').value;
+        const confirm2 = document.getElementById('forcePwConfirm').value;
+        if (!newPw) return alert("새 비밀번호를 입력하세요.");
+        if (newPw.length < 4) return alert("비밀번호는 4자리 이상이어야 합니다.");
+        if (newPw === '0000') return alert("초기 비밀번호와 동일하게 설정할 수 없습니다.");
+        if (newPw !== confirm2) return alert("비밀번호 확인이 일치하지 않습니다.");
+        const hashedPw = await hashPassword(newPw);
+        await db.ref('adminPassword').set(hashedPw);
+        document.getElementById('forceAdminPwModal').classList.add('hidden');
+        document.getElementById('forcePwNew').value = '';
+        document.getElementById('forcePwConfirm').value = '';
+        alert("✅ 비밀번호가 변경되었습니다. 이제 관리자 기능을 사용할 수 있습니다.");
+        executeSwitch('teacher');
+        applyTeacherPermissions();
+    }
+
+    // ✅ 관리자 비밀번호 변경 (superAdminPanel에서)
+    async function updateAdminPasswordFromSuper() {
+        const newPw = document.getElementById('newSignupCodeInput').value;
+        if (!newPw) return alert("새 비밀번호를 입력하세요.");
+        if (newPw.length < 4) return alert("비밀번호는 4자리 이상이어야 합니다.");
+        if (newPw === '0000') return alert("초기 비밀번호(0000)는 사용할 수 없습니다.");
+        const hashedPw = await hashPassword(newPw);
+        db.ref('adminPassword').set(hashedPw).then(() => {
+            alert("관리자 비밀번호가 변경되었습니다.");
+            document.getElementById('newSignupCodeInput').value = '';
+        });
+    }
 
     // ══════════════════════════════════════
 
@@ -2676,8 +2748,8 @@ function toggleSummerMenuVisible() {
 
 // ── 학생 초기화 ───────────────────────────────────────────
 function svGetKey(suffix) {
-  const sid = (typeof currentSid !== 'undefined' && currentSid) ? currentSid : 'guest';
-  return `sv_${sid}_${suffix}`;
+  const sid = (typeof currentSid !== 'undefined' && currentSid) ? currentSid : null;
+  return sid ? `sv_${sid}_${suffix}` : null;
 }
 
 function svInitSummer() {
@@ -2781,8 +2853,8 @@ function svLoadStampMemos() {
 
 function svSaveStampMemos() {
   try {
-    localStorage.setItem(svGetKey('stampMemos'), JSON.stringify(svStampMemos));
-    localStorage.setItem(svGetKey('stampDates'), JSON.stringify(svStampDates));
+    const _smK = svGetKey('stampMemos'); if (_smK) localStorage.setItem(_smK, JSON.stringify(svStampMemos));
+    const _sdK = svGetKey('stampDates'); if (_sdK) localStorage.setItem(_sdK, JSON.stringify(svStampDates));
   } catch(e) {}
   // Firebase에도 스탬프 메모/날짜 동기화
   try {
@@ -3041,7 +3113,7 @@ function svSpawnConfetti(anchor) {
 function svSaveState() {
   if (document.body.classList.contains('teacher-preview')) return;
   try {
-    localStorage.setItem(svGetKey('stamps'), JSON.stringify(svEarned));
+    const _stK = svGetKey('stamps'); if (_stK) localStorage.setItem(_stK, JSON.stringify(svEarned));
     // stamps 변경 시 Firebase stampDetail도 업데이트
     try {
       const _sid2 = (typeof window.currentSid !== 'undefined') ? window.currentSid : null;
@@ -3056,14 +3128,25 @@ function svSaveState() {
       }
     } catch(e) {}
     const checks=[]; document.querySelectorAll('#summerView .sv-check-item').forEach(el=>checks.push(el.classList.contains('sv-done')));
-    localStorage.setItem(svGetKey('checks'), JSON.stringify(checks));
+    const _ckK = svGetKey('checks'); if (_ckK) localStorage.setItem(_ckK, JSON.stringify(checks));
     const books=[]; document.querySelectorAll('#summerView .sv-book-card').forEach(el=>books.push(el.classList.contains('sv-done')));
-    localStorage.setItem(svGetKey('books'), JSON.stringify(books));
+    const _bkK = svGetKey('books'); if (_bkK) localStorage.setItem(_bkK, JSON.stringify(books));
   } catch(e){}
 }
 
 function svLoadState() {
   try {
+    // 로그인 안 된 상태면 UI 초기화만
+    if (!currentSid) {
+      document.querySelectorAll('#summerView .sv-book-card').forEach(el => {
+        el.classList.remove('sv-done'); el.style.opacity=''; el.style.background='';
+        const em = el.querySelector('.sv-book-emoji'); if (em && em.textContent==='✅') em.textContent = el.dataset.origEmoji||'📚';
+      });
+      document.querySelectorAll('#summerView .sv-check-item').forEach(el => {
+        el.classList.remove('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent='';
+      });
+      return;
+    }
     const s=localStorage.getItem(svGetKey('stamps')); svEarned=s?JSON.parse(s):[];
     svLoadStampMemos();
     const checks=localStorage.getItem(svGetKey('checks'));
@@ -3376,43 +3459,6 @@ function viewStudentPlan(sid, name) {
   // Firebase에서 제출 데이터 로드 후 localStorage에 임시 세팅
   window.db.ref(`schools/${window.currentSchoolCode}/summerSubmit/${sid}`).once('value', snap => {
     const d = snap.val();
-    if (d) {
-      // stamps (상세 정보 우선, 없으면 개수로 복원)
-      if (d.stampDetail) {
-        // 상세 데이터가 있으면 정확하게 복원
-        if (d.stampDetail.earned) localStorage.setItem(`sv_${sid}_stamps`, JSON.stringify(d.stampDetail.earned));
-        if (d.stampDetail.memos) localStorage.setItem(`sv_${sid}_stampMemos`, JSON.stringify(d.stampDetail.memos));
-        if (d.stampDetail.dates) localStorage.setItem(`sv_${sid}_stampDates`, JSON.stringify(d.stampDetail.dates));
-      } else if (d.stamps !== undefined) {
-        const earned = Array.from({length: d.stamps}, (_, i) => i);
-        localStorage.setItem(`sv_${sid}_stamps`, JSON.stringify(earned));
-      }
-      // checks
-      if (d.checks) localStorage.setItem(`sv_${sid}_checks`, JSON.stringify(d.checks));
-      // books
-      if (d.books) localStorage.setItem(`sv_${sid}_books`, JSON.stringify(d.books.map(b => b.done)));
-      // missions
-      if (d.missions) {
-        const missionRec = {};
-        d.missions.forEach((m, mi) => {
-          missionRec[mi] = {};
-          (m.items || []).forEach((item, ii) => { if (item.done) missionRec[mi][ii] = true; });
-        });
-        localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(missionRec));
-      }
-      // events (행사 기록)
-      if (d.events) {
-        localStorage.setItem(`sv_event_records_v2_${sid}`, JSON.stringify(d.events));
-      }
-      // bookRecords (책 감상 기록)
-      if (d.bookRecords) {
-        localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
-      }
-      // missionRecords (미션 상세 기록)
-      if (d.missionRecords) {
-        localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(d.missionRecords));
-      }
-    }
 
     // 기존 배너 제거
     const oldBanner = document.getElementById('teacherPreviewBanner');
@@ -3442,43 +3488,111 @@ function viewStudentPlan(sid, name) {
     document.getElementById('teacherView').classList.add('hidden');
     document.getElementById('summerView').classList.remove('hidden');
     if (document.getElementById('studentView')) document.getElementById('studentView').classList.add('hidden');
-    // svInitSummer의 래핑 체인 대신, Firebase 데이터 세팅 완료 후 직접 복원
+
+    // Firebase 설정(기간/목표/도서목록 등) 불러와서 화면 구성
     if (typeof window.svInitSummer === 'function') window.svInitSummer();
-    // Firebase 콜백 내부이므로 localStorage 세팅이 완료된 시점 - 즉시 restoreAll 재실행
+
+    // Firebase 데이터를 localStorage 없이 직접 UI에 적용
     setTimeout(() => {
-      if (typeof restoreAll === 'function') restoreAll();
-      if (typeof svBookRestoreAll === 'function') svBookRestoreAll();
-      if (typeof mrRestoreAll === 'function') mrRestoreAll();
-    }, 100);
+      if (d) {
+        // ✅ 스탬프
+        if (d.stampDetail && d.stampDetail.earned) {
+          window.svEarned = d.stampDetail.earned;
+          if (typeof svBuildStamps === 'function') svBuildStamps();
+        } else if (d.stamps !== undefined) {
+          window.svEarned = Array.from({length: d.stamps}, (_, i) => i);
+          if (typeof svBuildStamps === 'function') svBuildStamps();
+        }
+        // ✅ 체크 항목
+        if (d.checks) {
+          document.querySelectorAll('#summerView .sv-check-item').forEach((el, i) => {
+            if (d.checks[i]) { el.classList.add('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent='✓'; }
+          });
+        }
+        // ✅ 도서 체크
+        if (d.books) {
+          document.querySelectorAll('#summerView .sv-book-card').forEach((el, i) => {
+            if (d.books[i] && d.books[i].done) {
+              el.classList.add('sv-done');
+              el.style.opacity='0.6'; el.style.background='#E8FFE8';
+              const em=el.querySelector('.sv-book-emoji'); if(em) { el.dataset.origEmoji=em.textContent; em.textContent='✅'; }
+            }
+          });
+        }
+        // ✅ 행사 기록 (event records)
+        if (d.events && typeof restoreAll === 'function') {
+          localStorage.setItem(`sv_event_records_v2_${sid}`, JSON.stringify(d.events));
+          restoreAll();
+        }
+        // ✅ 책 감상 기록
+        if (d.bookRecords) localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
+        // ✅ 미션 기록
+        if (d.missionRecords) localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(d.missionRecords));
+        else if (d.missions) {
+          const rec = {};
+          d.missions.forEach((m, mi) => { rec[mi]={}; (m.items||[]).forEach((item,ii)=>{ if(item.done) rec[mi][ii]=true; }); });
+          localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(rec));
+        }
+        // 미션/행사 복원
+        if (typeof mrRestoreAll === 'function') setTimeout(mrRestoreAll, 50);
+      }
+    }, 150);
     window.scrollTo(0, 0);
   });
 }
 
 function exitTeacherPreview() {
-  // 임시 localStorage 정리
   const sid = window.currentSid;
-  if (sid) {
-    ['stamps','stampMemos','stampDates','checks','books'].forEach(k => localStorage.removeItem(`sv_${sid}_${k}`));
-    localStorage.removeItem(`sv_mission_records_v1_${sid}`);
-    localStorage.removeItem(`sv_event_records_v2_${sid}`);
-    localStorage.removeItem(`sv_book_records_v1_${sid}`);
-    localStorage.removeItem(`sv_mission_records_v1_${sid}`);
-  }
 
-  // 배너 제거
+  // ① localStorage 완전 삭제 (sid, guest, null 키 모두)
+  const prefixes = sid ? [`sv_${sid}_`, `sv_null_`, `sv_guest_`] : [`sv_null_`, `sv_guest_`];
+  const extraBases = ['sv_mission_records_v1_', 'sv_event_records_v2_', 'sv_book_records_v1_'];
+  const extraSuffixes = sid ? [sid, 'null', 'guest'] : ['null', 'guest'];
+
+  // prefix 기반 삭제
+  Object.keys(localStorage).filter(k => prefixes.some(p => k.startsWith(p)))
+    .forEach(k => localStorage.removeItem(k));
+  // extra 키 삭제
+  extraBases.forEach(base => extraSuffixes.forEach(s => localStorage.removeItem(base + s)));
+
+  // ② 도서 카드 UI 초기화
+  document.querySelectorAll('#summerView .sv-book-card').forEach(el => {
+    el.classList.remove('sv-done');
+    el.style.opacity = '';
+    el.style.background = '';
+    const emoji = el.querySelector('.sv-book-emoji');
+    if (emoji && emoji.textContent === '✅') {
+      emoji.textContent = el.dataset.origEmoji || '📚';
+    }
+  });
+
+  // ③ 체크 항목 UI 초기화
+  document.querySelectorAll('#summerView .sv-check-item').forEach(el => {
+    el.classList.remove('sv-done');
+    const box = el.querySelector('.sv-check-box');
+    if (box) box.textContent = '';
+  });
+
+  // ④ 스탬프 초기화
+  document.querySelectorAll('#summerView .sv-stamp').forEach(el => {
+    el.classList.remove('sv-stamp-on');
+    el.style.opacity = '';
+  });
+
+  // ⑤ 배너 제거
   const banner = document.getElementById('teacherPreviewBanner');
   if (banner) banner.remove();
 
-  // currentSid 초기화
+  // ⑥ currentSid 초기화
   window.currentSid = null;
 
-  // 이름 UI 초기화
+  // ⑦ 이름 UI 초기화
   const nameDisplay = document.getElementById('svStudentNameDisplay');
   const badge = document.getElementById('svSchoolBadge');
   if (nameDisplay) nameDisplay.textContent = '학생';
   if (badge) badge.textContent = '학년/반을 선택해주세요';
 
-  // 교사 화면으로 복귀
+  // ⑧ 교사 화면으로 복귀
   document.body.classList.remove('teacher-preview');
   document.getElementById('summerView').classList.add('hidden');
   document.getElementById('teacherView').classList.remove('hidden');
