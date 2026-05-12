@@ -2102,6 +2102,7 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
 
     function loadClassSpecificInfo() {
         updateLoginSelect();
+        renderTop7FromFilter(); // ✅ 학년/반 변경 시 TOP7 갱신
     }
 
     // ✅ 수정: 승인 대기 학생도 드롭다운에 표시 (선택 불가)
@@ -5068,21 +5069,34 @@ if (document.readyState === 'loading') {
     svBceApplySaved();
   }
 
-  // svApplySettings 훅 (Firebase 데이터 적용 후)
+  // svApplySettings 훅 (Firebase 데이터 적용 후) — 로그인 상태일 때만 복원
   const _bceApplyOrig = window.svApplySettings;
   window.svApplySettings = function(s) {
     if (typeof _bceApplyOrig === 'function') _bceApplyOrig.apply(this, arguments);
-    setTimeout(() => { attachBookEditListeners(); svBceApplySaved(); }, 400);
+    setTimeout(() => {
+      if (!window.currentSid) return; // 로그아웃 상태면 복원 안 함
+      attachBookEditListeners();
+      svBceApplySaved();
+    }, 400);
   };
 
-  // 로그아웃 훅: 카드 뱃지(별점·날짜·메모) UI 초기화
+  // 로그아웃 훅: 카드 뱃지(별점·날짜·메모) + 읽음(✅) 상태 UI 초기화
   if (typeof window.studentLogout === 'function') {
     const _bceOrigLogout = window.studentLogout;
     window.studentLogout = function() {
       _bceOrigLogout.apply(this, arguments);
       document.querySelectorAll('#summerView .sv-book-card').forEach(card => {
+        // 뱃지 제거
         const badge = card.querySelector('.bce-record-badge');
         if (badge) badge.remove();
+        // 읽음 상태 초기화
+        card.classList.remove('sv-done');
+        card.style.opacity = '';
+        card.style.background = '';
+        const emojiEl = card.querySelector('.sv-book-emoji');
+        if (emojiEl && emojiEl.textContent === '✅') {
+          emojiEl.textContent = card.dataset.origEmoji || '📖';
+        }
       });
     };
   }
