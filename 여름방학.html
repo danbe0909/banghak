@@ -260,7 +260,7 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
                     <h3>👥 학생 명부 및 신청 관리</h3>
                     <select id="filterSort">
                         <option value="name">이름순</option>
-                        
+                        <option value="books">독서량순</option>
                     </select>
                 </div>
                 <div id="tList">데이터 로딩 중...</div>
@@ -2749,6 +2749,10 @@ function toggleSummerMenuVisible() {
 }
 
 // ── 학생 초기화 ───────────────────────────────────────────
+function safeJsonParse(str, fallback) {
+  try { return JSON.parse(str); } catch(e) { return fallback; }
+}
+
 function svGetKey(suffix) {
   const sid = (typeof currentSid !== 'undefined' && currentSid) ? currentSid : null;
   return sid ? `sv_${sid}_${suffix}` : null;
@@ -3149,12 +3153,12 @@ function svLoadState() {
       });
       return;
     }
-    const s=localStorage.getItem(svGetKey('stamps')); svEarned=s?JSON.parse(s):[];
+    const s=localStorage.getItem(svGetKey('stamps')); svEarned=s?safeJsonParse(s,[]):[];
     svLoadStampMemos();
     const checks=localStorage.getItem(svGetKey('checks'));
-    if(checks){const arr=JSON.parse(checks); document.querySelectorAll('#summerView .sv-check-item').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.querySelector('.sv-check-box').textContent='✓';}else{el.classList.remove('sv-done');el.querySelector('.sv-check-box').textContent='';} });}
+    if(checks){const arr=safeJsonParse(checks,[]); if(arr.length) document.querySelectorAll('#summerView .sv-check-item').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.querySelector('.sv-check-box').textContent='✓';}else{el.classList.remove('sv-done');el.querySelector('.sv-check-box').textContent='';} });}
     const books=localStorage.getItem(svGetKey('books'));
-    if(books){const arr=JSON.parse(books); document.querySelectorAll('#summerView .sv-book-card').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.style.opacity='0.6';el.style.background='#E8FFE8';el.querySelector('.sv-book-emoji').textContent='✅';}else{el.classList.remove('sv-done');el.style.opacity='';el.style.background='';} });}
+    if(books){const arr=safeJsonParse(books,[]); if(arr.length) document.querySelectorAll('#summerView .sv-book-card').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.style.opacity='0.6';el.style.background='#E8FFE8';el.querySelector('.sv-book-emoji').textContent='✅';}else{el.classList.remove('sv-done');el.style.opacity='';el.style.background='';} });}
   } catch(e){}
 }
 
@@ -3280,15 +3284,19 @@ function svLoadSubmitStatus() {
   if (!window.currentSchoolCode) return;
   const code = window.currentSchoolCode;
 
-  // 기존 리스너 해제 방지를 위해 ref 저장
-  if (window._svSubmitListener) {
-    window.db.ref(`schools/${code}/summerSubmit`).off('value', window._svSubmitListener);
+  // 기존 리스너 해제: ref를 직접 저장해서 경로 불일치 방지
+  if (window._svSubmitRef && window._svSubmitListener) {
+    window._svSubmitRef.off('value', window._svSubmitListener);
+    window._svSubmitRef = null;
+    window._svSubmitListener = null;
   }
 
   // 학생 목록은 한 번만 읽고, 제출 현황은 실시간 리스너로 자동 갱신
   window.db.ref(`schools/${code}/classData_v2/students`).once('value').then(studentsSnap => {
     const allStudents = studentsSnap.val() || {};
-    window._svSubmitListener = window.db.ref(`schools/${code}/summerSubmit`).on('value', submitSnap => {
+    const submitRef = window.db.ref(`schools/${code}/summerSubmit`);
+    window._svSubmitRef = submitRef;
+    window._svSubmitListener = submitRef.on('value', submitSnap => {
       const submitted = submitSnap.val() || {};
       svRenderSubmitList(allStudents, submitted);
     });
@@ -3482,7 +3490,14 @@ function viewStudentPlan(sid, name) {
     const banner = document.createElement('div');
     banner.id = 'teacherPreviewBanner';
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#ff7043,#e64a19);color:white;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.3);';
-    banner.innerHTML = `<span>👁️ 교사 미리보기 — ${s.name} (${className})${d ? '' : ' · 미제출'}</span><button onclick="exitTeacherPreview()" style="background:white;color:#e64a19;border:none;border-radius:20px;padding:5px 14px;font-size:13px;font-weight:bold;cursor:pointer;">← 돌아가기</button>`;
+    const bannerSpan = document.createElement('span');
+    bannerSpan.textContent = `👁️ 교사 미리보기 — ${s.name} (${className})${d ? '' : ' · 미제출'}`;
+    const bannerBtn = document.createElement('button');
+    bannerBtn.textContent = '← 돌아가기';
+    bannerBtn.setAttribute('onclick', 'exitTeacherPreview()');
+    bannerBtn.style.cssText = 'background:white;color:#e64a19;border:none;border-radius:20px;padding:5px 14px;font-size:13px;font-weight:bold;cursor:pointer;';
+    banner.appendChild(bannerSpan);
+    banner.appendChild(bannerBtn);
     document.body.appendChild(banner);
 
     // summerView로 전환
@@ -4187,8 +4202,8 @@ if (_origNameDisplay) {
 }
 
 // studentLogout 훅: 카드 UI 초기화
-if (typeof studentLogout === 'function') {
-  const _origLogout = studentLogout;
+if (typeof window.studentLogout === 'function') {
+  const _origLogout = window.studentLogout;
   window.studentLogout = function() {
     _origLogout.apply(this, arguments);
     svErClearAllCards();
@@ -4604,8 +4619,8 @@ if (_mrNameDisplay) {
 }
 
 // 로그아웃 시 초기화
-if (typeof studentLogout === 'function') {
-  const _mrOrigLogout = studentLogout;
+if (typeof window.studentLogout === 'function') {
+  const _mrOrigLogout = window.studentLogout;
   window.studentLogout = function() {
     _mrOrigLogout.apply(this, arguments);
     // 프로그레스바 0으로, 뱃지 제거
@@ -5214,6 +5229,16 @@ if (document.readyState === 'loading') {
         setTimeout(() => toast.remove(), 2500);
       });
     } else {
+      // 로그인 세션 정보 없음 — 저장 불가 안내 후 닫기
+      const toast = document.createElement('div');
+      toast.textContent = '⚠️ 로그인 정보가 없어 저장하지 못했습니다.';
+      Object.assign(toast.style, {
+        position:'fixed', bottom:'80px', left:'50%', transform:'translateX(-50%)',
+        background:'#FF5722', color:'white', padding:'10px 20px', borderRadius:'20px',
+        fontWeight:'bold', fontSize:'14px', zIndex:'99999', boxShadow:'0 4px 12px rgba(0,0,0,.2)'
+      });
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
       svCloseScheduleEdit();
     }
   };
