@@ -94,9 +94,11 @@ body.teacher-preview #summerView button[onclick="svSaveSchedule()"] { display: n
 body.teacher-preview #summerView button[onclick="svResetStamps()"] { display: none !important; }
 body.teacher-preview .er-add-btn,
 body.teacher-preview .er-save-btn,
+body.teacher-preview .er-log-edit-btn,
 body.teacher-preview .er-log-del-btn,
 body.teacher-preview .mr-add-btn,
 body.teacher-preview .mr-save-btn,
+body.teacher-preview .mr-log-edit-btn,
 body.teacher-preview .mr-log-del-btn,
 body.teacher-preview .bm-add-btn,
 body.teacher-preview .bm-save-btn { display: none !important; }
@@ -4084,15 +4086,16 @@ function updateCardUI(key, el, entries) {
   badgeWrap.innerHTML = '';
   badgeWrap.style.display = 'none';
 
-  // 건수 뱃지 (텍스트 아래 별도 행)
+  // 건수 뱃지 (텍스트 아래 별도 행) - 다녀온 것(done=true)만 카운트
+  const doneCount = sorted.filter(e => e.done).length;
   let countBadge = el.querySelector('.sv-event-count-badge');
-  if (sorted.length > 0) {
+  if (doneCount > 0) {
     if (!countBadge) {
       countBadge = document.createElement('div');
       countBadge.className = 'sv-event-count-badge';
       el.appendChild(countBadge);
     }
-    countBadge.textContent = sorted.length + '건';
+    countBadge.textContent = doneCount + '건';
   } else if (countBadge) { countBadge.remove(); }
 }
 
@@ -4162,6 +4165,8 @@ function svErClearAllCards() {
 const _svInitOrigEvent = window.svInitSummer;
 window.svInitSummer = function() {
   if (typeof _svInitOrigEvent === 'function') _svInitOrigEvent.apply(this, arguments);
+  // 이전 학생 데이터 잔류 방지: 먼저 초기화 후 복원
+  if (typeof svErClearAllCards === 'function') svErClearAllCards();
   setTimeout(restoreAll, 400);
   setTimeout(syncEventsToFirebase, 800);
   setTimeout(syncBookRecordsToFirebase, 900);
@@ -4172,6 +4177,8 @@ window.svInitSummer = function() {
 const _origNameDisplay = document.getElementById('svStudentNameDisplay');
 if (_origNameDisplay) {
   new MutationObserver(() => {
+    // 이전 학생 데이터 잔류 방지: 먼저 초기화
+    if (typeof svErClearAllCards === 'function') svErClearAllCards();
     setTimeout(restoreAll, 300);
     setTimeout(syncEventsToFirebase, 700);
     setTimeout(syncBookRecordsToFirebase, 900);
