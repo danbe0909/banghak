@@ -3903,6 +3903,18 @@ function syncEventsToFirebase() {
   } catch(e){}
 }
 
+function syncBookRecordsToFirebase() {
+  if (document.body.classList.contains('teacher-preview')) return;
+  try {
+    const sid = (typeof window.currentSid !== 'undefined') ? window.currentSid : null;
+    const code = (typeof window.currentSchoolCode !== 'undefined') ? window.currentSchoolCode : null;
+    if (!sid || !code || !window.db) return;
+    const data = JSON.parse(localStorage.getItem('sv_book_records_v1_' + sid) || '{}');
+    if (Object.keys(data).length === 0) return;
+    window.db.ref(`schools/${code}/summerSubmit/${sid}/bookRecords`).set(data);
+  } catch(e) {}
+}
+
 /* 날짜순 정렬 (오래된 순) */
 function sortedEntries(entries) {
   return [...entries].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
