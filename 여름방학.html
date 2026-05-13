@@ -4666,7 +4666,9 @@ if (document.readyState === 'loading') {
   /* ── 저장/로드 키 ──────────────────────────────── */
   function bookEditKey() {
     const code = window.currentSchoolCode || 'default';
-    const sid  = window.currentSid || 'guest';
+    // window.currentSid(학생 로그인) 또는 로컬 currentSid(교사 관리 스코프) 둘 다 확인
+    const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
+    if (!sid) return null; // sid 없으면 null 반환 → 저장/로드 안 함
     return 'svBookEdit_' + code + '_' + sid;
   }
 
@@ -4675,7 +4677,9 @@ if (document.readyState === 'loading') {
   }
 
   function saveBookEdits(data) {
-    try { localStorage.setItem(bookEditKey(), JSON.stringify(data)); } catch(e) {}
+    const k = bookEditKey();
+    if (!k) return; // 로그인 안 된 상태면 저장 안 함
+    try { localStorage.setItem(k, JSON.stringify(data)); } catch(e) {}
   }
 
   /* ── 편집 모달 HTML 삽입 ────────────────────────── */
@@ -5037,6 +5041,9 @@ if (document.readyState === 'loading') {
 
   /* ── 저장된 편집 데이터 복원 ──────────────────────── */
   window.svBceApplySaved = function() {
+    // 로그인 상태 확인 (window.currentSid 또는 로컬 currentSid)
+    const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
+    if (!sid) return;
     const edits = loadBookEdits();
     document.querySelectorAll('#summerView .sv-book-card').forEach((card, idx) => {
       const e = edits[idx];
