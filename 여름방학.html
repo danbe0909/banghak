@@ -5343,6 +5343,39 @@ if (document.readyState === 'loading') {
 })();
 </script>
 
+<script>
+// ── svBookEdit 구버전 키 자동 정리 ──────────────────
+// 올바른 키 형식: svBookEdit_{code}_{sid} (sid는 Firebase key이므로 반드시 '-'로 시작)
+// 구버전 키(sid 없거나 '-' 없는 것)를 로그인 시 정리
+(function() {
+  function cleanOldBookEditKeys(currentSid) {
+    const correctSuffix = '_' + currentSid; // e.g. "_-OqdL0uvhMLzZcPsKVHi"
+    Object.keys(localStorage)
+      .filter(function(k) {
+        if (!k.startsWith('svBookEdit_')) return false;
+        // 올바른 현재 학생 키는 유지
+        if (k.endsWith(correctSuffix)) return false;
+        return true; // 나머지 구버전 키 삭제
+      })
+      .forEach(function(k) {
+        localStorage.removeItem(k);
+      });
+  }
+
+  // studentLogin 훅: 로그인 성공 후 구버전 키 정리
+  const _origLogin2 = window.studentLogin;
+  if (typeof _origLogin2 === 'function') {
+    window.studentLogin = async function() {
+      await _origLogin2.apply(this, arguments);
+      // 로그인 완료 후 window.currentSid가 세팅됐을 때 정리
+      setTimeout(function() {
+        if (window.currentSid) cleanOldBookEditKeys(window.currentSid);
+      }, 500);
+    };
+  }
+})();
+</script>
+
 
 </body>
 </html>
