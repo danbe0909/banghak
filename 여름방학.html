@@ -2781,7 +2781,7 @@ function svInitSummer() {
   // Firebase 설정 불러와서 학생 화면 반영
   svLoadFirebaseSettings(data => {
     if (data) svApplySettings(data);
-    svLoadState();
+    svLoadState(currentSid); // 현재 시점의 sid를 명시적으로 전달
     svBuildStamps();
     // 제출 여부 확인 후 버튼 상태 복원
     setTimeout(() => { if (typeof svCheckSubmitStatus === 'function') svCheckSubmitStatus(); }, 300);
@@ -3141,10 +3141,12 @@ function svSaveState() {
   } catch(e){}
 }
 
-function svLoadState() {
+function svLoadState(forceSid) {
   try {
+    // forceSid 우선, 없으면 현재 currentSid / window.currentSid
+    const sid = forceSid || (typeof currentSid !== 'undefined' ? currentSid : null) || window.currentSid || null;
     // 로그인 안 된 상태면 UI 초기화만
-    if (!currentSid) {
+    if (!sid) {
       document.querySelectorAll('#summerView .sv-book-card').forEach(el => {
         el.classList.remove('sv-done'); el.style.opacity=''; el.style.background='';
         const em = el.querySelector('.sv-book-emoji'); if (em && em.textContent==='✅') em.textContent = el.dataset.origEmoji||'📚';
@@ -3154,11 +3156,12 @@ function svLoadState() {
       });
       return;
     }
-    const s=localStorage.getItem(svGetKey('stamps')); svEarned=s?safeJsonParse(s,[]):[];
+    const getKey = (suffix) => `sv_${sid}_${suffix}`;
+    const s=localStorage.getItem(getKey('stamps')); svEarned=s?safeJsonParse(s,[]):[];
     svLoadStampMemos();
-    const checks=localStorage.getItem(svGetKey('checks'));
+    const checks=localStorage.getItem(getKey('checks'));
     if(checks){const arr=safeJsonParse(checks,[]); if(arr.length) document.querySelectorAll('#summerView .sv-check-item').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.querySelector('.sv-check-box').textContent='✓';}else{el.classList.remove('sv-done');el.querySelector('.sv-check-box').textContent='';} });}
-    const books=localStorage.getItem(svGetKey('books'));
+    const books=localStorage.getItem(getKey('books'));
     if(books){const arr=safeJsonParse(books,[]); if(arr.length) document.querySelectorAll('#summerView .sv-book-card').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.style.opacity='0.6';el.style.background='#E8FFE8';el.querySelector('.sv-book-emoji').textContent='✅';}else{el.classList.remove('sv-done');el.style.opacity='';el.style.background='';} });}
   } catch(e){}
 }
@@ -4947,7 +4950,7 @@ if (document.readyState === 'loading') {
     }
     svSaveState();
 
-    // localStorage 저장 (done은 svSaveState/sv_{sid}_books가 단일 소스)
+    // localStorage 저장 (done은 svSaveState→sv_{sid}_books 단일 소스)
     const edits = loadBookEdits();
     edits[_bceCurrentIdx] = { title, genre, emoji, memo, date, star };
     saveBookEdits(edits);
@@ -5055,8 +5058,13 @@ if (document.readyState === 'loading') {
       if (genreEl) genreEl.textContent = e.genre;
       card.dataset.origEmoji = e.emoji;
       const emojiEl = card.querySelector('.sv-book-emoji');
-      // done(읽음) 상태는 svLoadState()의 sv_{sid}_books가 단일 소스 — 여기서 덮어쓰지 않음
       if (emojiEl && !card.classList.contains('sv-done')) emojiEl.textContent = e.emoji;
+      // 읽음 상태 복원
+      if (e.done) {
+        card.classList.add('sv-done');
+        card.style.opacity = '0.6'; card.style.background = '#E8FFE8';
+        if (emojiEl) emojiEl.textContent = '✅';
+      }
       svBceUpdateBadge(card, e);
     });
   };
@@ -5335,39 +5343,6 @@ if (document.readyState === 'loading') {
             observer.observe(m, { attributes: true, attributeFilter: ['class'] });
         });
     });
-})();
-</script>
-
-<script>
-// ── svBookEdit 구버전 done 데이터 자동 정리 ──────────
-(function() {
-  function cleanBookEditDone() {
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('svBookEdit_'))
-      .forEach(k => {
-        try {
-          const data = JSON.parse(localStorage.getItem(k) || '{}');
-          let changed = false;
-          Object.keys(data).forEach(idx => {
-            if (data[idx] && data[idx].done !== undefined) {
-              delete data[idx].done; // done은 sv_{sid}_books가 단일 소스
-              changed = true;
-            }
-          });
-          if (changed) localStorage.setItem(k, JSON.stringify(data));
-        } catch(e) {}
-      });
-  }
-
-  // 페이지 로드 즉시 + 로그인 후 정리
-  cleanBookEditDone();
-  const _orig = window.studentLogin;
-  if (typeof _orig === 'function') {
-    window.studentLogin = async function() {
-      await _orig.apply(this, arguments);
-      setTimeout(cleanBookEditDone, 600);
-    };
-  }
 })();
 </script>
 
