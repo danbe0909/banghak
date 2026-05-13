@@ -2135,7 +2135,7 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
             schoolRef(`classData_v2/students/${sid}/pw`).set(result.hash);
         }
         currentSid = sid;
-        // ✅ 헤더 학년/반 업데이트
+        window.currentSid = sid; // ← bookEditKey 등 외부 스코프에서 접근 가능하도록
         const _g = String(rawData[sid].grade), _c = String(rawData[sid].classNum);
         const _cnVal = allClassNames[`${_g}-${_c}`];
         document.getElementById('headerClassName').innerText = (_cnVal && typeof _cnVal === 'string') ? _cnVal : `${_g}학년 ${_c}반`;
@@ -2152,6 +2152,7 @@ body.teacher-preview #summerView .sv-book-card * { pointer-events: auto !importa
 
     function studentLogout() {
         currentSid = null;
+        window.currentSid = null; // ← 외부 스코프도 동기화
         // 🌻 방학생활 탭 - 로그아웃 시 이름 초기화
         const _nd = document.getElementById('svStudentNameDisplay');
         if (_nd) _nd.textContent = '학생';
