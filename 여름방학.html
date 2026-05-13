@@ -4947,9 +4947,9 @@ if (document.readyState === 'loading') {
     }
     svSaveState();
 
-    // localStorage 저장
+    // localStorage 저장 (done은 svSaveState/sv_{sid}_books가 단일 소스)
     const edits = loadBookEdits();
-    edits[_bceCurrentIdx] = { title, genre, emoji, memo, date, star, done };
+    edits[_bceCurrentIdx] = { title, genre, emoji, memo, date, star };
     saveBookEdits(edits);
 
     svBceUpdateBadge(_bceCurrentCard, { memo, date, star });
@@ -5055,13 +5055,8 @@ if (document.readyState === 'loading') {
       if (genreEl) genreEl.textContent = e.genre;
       card.dataset.origEmoji = e.emoji;
       const emojiEl = card.querySelector('.sv-book-emoji');
+      // done(읽음) 상태는 svLoadState()의 sv_{sid}_books가 단일 소스 — 여기서 덮어쓰지 않음
       if (emojiEl && !card.classList.contains('sv-done')) emojiEl.textContent = e.emoji;
-      // 읽음 상태 복원
-      if (e.done) {
-        card.classList.add('sv-done');
-        card.style.opacity = '0.6'; card.style.background = '#E8FFE8';
-        if (emojiEl) emojiEl.textContent = '✅';
-      }
       svBceUpdateBadge(card, e);
     });
   };
@@ -5344,33 +5339,33 @@ if (document.readyState === 'loading') {
 </script>
 
 <script>
-// ── svBookEdit 구버전 키 자동 정리 ──────────────────
-// 올바른 키 형식: svBookEdit_{code}_{sid} (sid는 Firebase key이므로 반드시 '-'로 시작)
-// 구버전 키(sid 없거나 '-' 없는 것)를 로그인 시 정리
+// ── svBookEdit 구버전 done 데이터 자동 정리 ──────────
 (function() {
-  function cleanOldBookEditKeys(currentSid) {
-    const correctSuffix = '_' + currentSid; // e.g. "_-OqdL0uvhMLzZcPsKVHi"
+  function cleanBookEditDone() {
     Object.keys(localStorage)
-      .filter(function(k) {
-        if (!k.startsWith('svBookEdit_')) return false;
-        // 올바른 현재 학생 키는 유지
-        if (k.endsWith(correctSuffix)) return false;
-        return true; // 나머지 구버전 키 삭제
-      })
-      .forEach(function(k) {
-        localStorage.removeItem(k);
+      .filter(k => k.startsWith('svBookEdit_'))
+      .forEach(k => {
+        try {
+          const data = JSON.parse(localStorage.getItem(k) || '{}');
+          let changed = false;
+          Object.keys(data).forEach(idx => {
+            if (data[idx] && data[idx].done !== undefined) {
+              delete data[idx].done; // done은 sv_{sid}_books가 단일 소스
+              changed = true;
+            }
+          });
+          if (changed) localStorage.setItem(k, JSON.stringify(data));
+        } catch(e) {}
       });
   }
 
-  // studentLogin 훅: 로그인 성공 후 구버전 키 정리
-  const _origLogin2 = window.studentLogin;
-  if (typeof _origLogin2 === 'function') {
+  // 페이지 로드 즉시 + 로그인 후 정리
+  cleanBookEditDone();
+  const _orig = window.studentLogin;
+  if (typeof _orig === 'function') {
     window.studentLogin = async function() {
-      await _origLogin2.apply(this, arguments);
-      // 로그인 완료 후 window.currentSid가 세팅됐을 때 정리
-      setTimeout(function() {
-        if (window.currentSid) cleanOldBookEditKeys(window.currentSid);
-      }, 500);
+      await _orig.apply(this, arguments);
+      setTimeout(cleanBookEditDone, 600);
     };
   }
 })();
