@@ -3198,7 +3198,9 @@ function svLoadState(forceSid) {
         setTimeout(() => {
           if (typeof restoreAll === 'function') restoreAll();
           if (typeof mrRestoreAll === 'function') mrRestoreAll();
-        }, 100);
+          // ✅ 도서 카드 제목/이모지 복원 (체크 상태 복원 후 실행)
+          if (typeof window.svBceApplySaved === 'function') window.svBceApplySaved();
+        }, 150);
       } else {
         // Firebase에 데이터 없으면 localStorage fallback
         _svLoadFromLocalStorage(sid);
@@ -5129,22 +5131,20 @@ if (document.readyState === 'loading') {
     });
   }
 
-  /* ── 저장된 편집 데이터 복원 ──────────────────────── */
-  window.svBceApplySaved = function() {
-    // 로그인 상태 확인 (window.currentSid 또는 로컬 currentSid)
-    const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
-    if (!sid) return;
-    const edits = loadBookEdits();
+  /* ── 저장된 편집 데이터 복원 (edits 객체 직접 적용) ── */
+  function _svBceApplyEdits(edits) {
     document.querySelectorAll('#summerView .sv-book-card').forEach((card, idx) => {
       const e = edits[idx];
       if (!e) return;
       const titleEl = card.querySelector('.sv-book-title');
       const genreEl = card.querySelector('.sv-book-genre');
-      if (titleEl) titleEl.textContent = e.title;
-      if (genreEl) genreEl.textContent = e.genre;
-      card.dataset.origEmoji = e.emoji;
       const emojiEl = card.querySelector('.sv-book-emoji');
-      if (emojiEl && !card.classList.contains('sv-done')) emojiEl.textContent = e.emoji;
+      if (titleEl && e.title) titleEl.textContent = e.title;
+      if (genreEl && e.genre) genreEl.textContent = e.genre;
+      if (e.emoji) {
+        card.dataset.origEmoji = e.emoji;
+        if (emojiEl && !card.classList.contains('sv-done')) emojiEl.textContent = e.emoji;
+      }
       // 읽음 상태 복원
       if (e.done) {
         card.classList.add('sv-done');
@@ -5153,6 +5153,29 @@ if (document.readyState === 'loading') {
       }
       svBceUpdateBadge(card, e);
     });
+  }
+
+  /* ── 저장된 편집 데이터 복원 (Firebase 우선) ──────── */
+  window.svBceApplySaved = function() {
+    const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
+    if (!sid) return;
+    const code = window.currentSchoolCode || null;
+    // Firebase 우선 → 없으면 localStorage fallback
+    if (sid && code && window.db) {
+      window.db.ref(`schools/${code}/summerSubmit/${sid}/bookRecords`).once('value', snap => {
+        const d = snap.val();
+        if (d && Object.keys(d).length > 0) {
+          // Firebase 데이터를 localStorage에도 동기화
+          const k = bookEditKey();
+          if (k) try { localStorage.setItem(k, JSON.stringify(d)); } catch(e2) {}
+          _svBceApplyEdits(d);
+        } else {
+          _svBceApplyEdits(loadBookEdits());
+        }
+      }).catch(() => _svBceApplyEdits(loadBookEdits()));
+    } else {
+      _svBceApplyEdits(loadBookEdits());
+    }
   };
 
   /* ── 모달 닫기 (배경 클릭) ──────────────────────── */
