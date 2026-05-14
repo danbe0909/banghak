@@ -2781,10 +2781,9 @@ function svInitSummer() {
   // Firebase 설정 불러와서 학생 화면 반영
   svLoadFirebaseSettings(data => {
     if (data) svApplySettings(data);
-    svLoadState(currentSid); // 현재 시점의 sid를 명시적으로 전달
-    svBuildStamps();
+    svLoadState(currentSid); // Firebase 우선 로드 (내부에서 svBuildStamps 호출)
     // 제출 여부 확인 후 버튼 상태 복원
-    setTimeout(() => { if (typeof svCheckSubmitStatus === 'function') svCheckSubmitStatus(); }, 300);
+    setTimeout(() => { if (typeof svCheckSubmitStatus === 'function') svCheckSubmitStatus(); }, 500);
   });
 }
 
@@ -2863,7 +2862,7 @@ function svSaveStampMemos() {
     const _smK = svGetKey('stampMemos'); if (_smK) localStorage.setItem(_smK, JSON.stringify(svStampMemos));
     const _sdK = svGetKey('stampDates'); if (_sdK) localStorage.setItem(_sdK, JSON.stringify(svStampDates));
   } catch(e) {}
-  // Firebase에도 스탬프 메모/날짜 동기화
+  // ✅ Firebase 자동저장 (svSaveState와 동일한 update 방식)
   try {
     const sid = (typeof window.currentSid !== 'undefined') ? window.currentSid : null;
     const code = (typeof window.currentSchoolCode !== 'undefined') ? window.currentSchoolCode : null;
@@ -3120,45 +3119,103 @@ function svSpawnConfetti(anchor) {
 function svSaveState() {
   if (document.body.classList.contains('teacher-preview')) return;
   try {
+    const sid = (typeof window.currentSid !== 'undefined') ? window.currentSid : null;
+    const code = (typeof window.currentSchoolCode !== 'undefined') ? window.currentSchoolCode : null;
+
     const _stK = svGetKey('stamps'); if (_stK) localStorage.setItem(_stK, JSON.stringify(svEarned));
-    // stamps 변경 시 Firebase stampDetail도 업데이트
-    try {
-      const _sid2 = (typeof window.currentSid !== 'undefined') ? window.currentSid : null;
-      const _code2 = (typeof window.currentSchoolCode !== 'undefined') ? window.currentSchoolCode : null;
-      if (_sid2 && _code2 && window.db) {
-        window.db.ref(`schools/${_code2}/summerSubmit/${_sid2}/stampDetail`).set({
+    const checks=[]; document.querySelectorAll('#summerView .sv-check-item').forEach(el=>checks.push(el.classList.contains('sv-done')));
+    const _ckK = svGetKey('checks'); if (_ckK) localStorage.setItem(_ckK, JSON.stringify(checks));
+    const books=[]; document.querySelectorAll('#summerView .sv-book-card').forEach(el=>books.push({done:el.classList.contains('sv-done')}));
+    const _bkK = svGetKey('books'); if (_bkK) localStorage.setItem(_bkK, JSON.stringify(books.map(b=>b.done)));
+
+    // ✅ Firebase 자동저장 (스탬프 + 체크 + 도서)
+    if (sid && code && window.db) {
+      window.db.ref(`schools/${code}/summerSubmit/${sid}`).update({
+        stampDetail: {
           count: svEarned.length,
           earned: JSON.parse(JSON.stringify(svEarned)),
           memos: JSON.parse(JSON.stringify(svStampMemos)),
           dates: JSON.parse(JSON.stringify(svStampDates))
-        }).catch(()=>{});
-      }
-    } catch(e) {}
-    const checks=[]; document.querySelectorAll('#summerView .sv-check-item').forEach(el=>checks.push(el.classList.contains('sv-done')));
-    const _ckK = svGetKey('checks'); if (_ckK) localStorage.setItem(_ckK, JSON.stringify(checks));
-    const books=[]; document.querySelectorAll('#summerView .sv-book-card').forEach(el=>books.push(el.classList.contains('sv-done')));
-    const _bkK = svGetKey('books'); if (_bkK) localStorage.setItem(_bkK, JSON.stringify(books));
+        },
+        checks: checks,
+        books: books
+      }).catch(()=>{});
+    }
   } catch(e){}
 }
 
 function svLoadState(forceSid) {
+  const sid = forceSid || (typeof currentSid !== 'undefined' ? currentSid : null) || window.currentSid || null;
+  // 로그인 안 된 상태면 UI 초기화만
+  if (!sid) {
+    document.querySelectorAll('#summerView .sv-book-card').forEach(el => {
+      el.classList.remove('sv-done'); el.style.opacity=''; el.style.background='';
+      const em = el.querySelector('.sv-book-emoji'); if (em && em.textContent==='✅') em.textContent = el.dataset.origEmoji||'📚';
+    });
+    document.querySelectorAll('#summerView .sv-check-item').forEach(el => {
+      el.classList.remove('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent='';
+    });
+    return;
+  }
+  // ✅ Firebase 우선 로드 (자동저장된 데이터 복원)
+  const code = (typeof window.currentSchoolCode !== 'undefined') ? window.currentSchoolCode : null;
+  if (code && window.db) {
+    window.db.ref(`schools/${code}/summerSubmit/${sid}`).once('value', snap => {
+      const d = snap.val();
+      if (d) {
+        // 스탬프
+        if (d.stampDetail) {
+          svEarned = d.stampDetail.earned || [];
+          svStampMemos = d.stampDetail.memos || {};
+          svStampDates = d.stampDetail.dates || {};
+        } else if (d.stamps !== undefined) {
+          svEarned = Array.from({length: d.stamps}, (_, i) => i);
+        }
+        svBuildStamps();
+        // 체크 항목
+        if (d.checks) {
+          document.querySelectorAll('#summerView .sv-check-item').forEach((el, i) => {
+            if (d.checks[i]) { el.classList.add('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent='✓'; }
+            else { el.classList.remove('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent=''; }
+          });
+        }
+        // 도서 체크
+        if (d.books) {
+          document.querySelectorAll('#summerView .sv-book-card').forEach((el, i) => {
+            if (d.books[i] && d.books[i].done !== undefined ? d.books[i].done : d.books[i]) {
+              el.classList.add('sv-done'); el.style.opacity='0.6'; el.style.background='#E8FFE8';
+              const em=el.querySelector('.sv-book-emoji'); if(em){ el.dataset.origEmoji=el.dataset.origEmoji||em.textContent; em.textContent='✅'; }
+            } else {
+              el.classList.remove('sv-done'); el.style.opacity=''; el.style.background='';
+              const em=el.querySelector('.sv-book-emoji'); if(em && em.textContent==='✅') em.textContent=el.dataset.origEmoji||'📖';
+            }
+          });
+        }
+        // 행사/미션/도서감상 기록을 localStorage에도 동기화 (기존 렌더 함수 호환)
+        if (d.events) localStorage.setItem(`sv_event_records_v2_${sid}`, JSON.stringify(d.events));
+        if (d.bookRecords) localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
+        if (d.missionRecords) localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(d.missionRecords));
+        setTimeout(() => {
+          if (typeof restoreAll === 'function') restoreAll();
+          if (typeof mrRestoreAll === 'function') mrRestoreAll();
+        }, 100);
+      } else {
+        // Firebase에 데이터 없으면 localStorage fallback
+        _svLoadFromLocalStorage(sid);
+      }
+    }).catch(() => _svLoadFromLocalStorage(sid));
+  } else {
+    _svLoadFromLocalStorage(sid);
+  }
+}
+
+// localStorage fallback (Firebase 실패 또는 데이터 없을 때)
+function _svLoadFromLocalStorage(sid) {
   try {
-    // forceSid 우선, 없으면 현재 currentSid / window.currentSid
-    const sid = forceSid || (typeof currentSid !== 'undefined' ? currentSid : null) || window.currentSid || null;
-    // 로그인 안 된 상태면 UI 초기화만
-    if (!sid) {
-      document.querySelectorAll('#summerView .sv-book-card').forEach(el => {
-        el.classList.remove('sv-done'); el.style.opacity=''; el.style.background='';
-        const em = el.querySelector('.sv-book-emoji'); if (em && em.textContent==='✅') em.textContent = el.dataset.origEmoji||'📚';
-      });
-      document.querySelectorAll('#summerView .sv-check-item').forEach(el => {
-        el.classList.remove('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent='';
-      });
-      return;
-    }
     const getKey = (suffix) => `sv_${sid}_${suffix}`;
     const s=localStorage.getItem(getKey('stamps')); svEarned=s?safeJsonParse(s,[]):[];
     svLoadStampMemos();
+    svBuildStamps();
     const checks=localStorage.getItem(getKey('checks'));
     if(checks){const arr=safeJsonParse(checks,[]); if(arr.length) document.querySelectorAll('#summerView .sv-check-item').forEach((el,i)=>{ if(arr[i]){el.classList.add('sv-done');el.querySelector('.sv-check-box').textContent='✓';}else{el.classList.remove('sv-done');el.querySelector('.sv-check-box').textContent='';} });}
     const books=localStorage.getItem(getKey('books'));
@@ -4677,13 +4734,42 @@ if (document.readyState === 'loading') {
   }
 
   function loadBookEdits() {
+    // localStorage fallback (동기 필요한 경우)
     try { return JSON.parse(localStorage.getItem(bookEditKey()) || '{}'); } catch(e) { return {}; }
+  }
+
+  function loadBookEditsAsync(callback) {
+    const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
+    const code = window.currentSchoolCode || null;
+    if (sid && code && window.db) {
+      window.db.ref(`schools/${code}/summerSubmit/${sid}/bookRecords`).once('value', snap => {
+        const d = snap.val();
+        if (d && Object.keys(d).length > 0) {
+          // Firebase 데이터를 localStorage에도 동기화
+          const k = bookEditKey();
+          if (k) try { localStorage.setItem(k, JSON.stringify(d)); } catch(e) {}
+          if (callback) callback(d);
+        } else {
+          if (callback) callback(loadBookEdits());
+        }
+      }).catch(() => { if (callback) callback(loadBookEdits()); });
+    } else {
+      if (callback) callback(loadBookEdits());
+    }
   }
 
   function saveBookEdits(data) {
     const k = bookEditKey();
     if (!k) return; // 로그인 안 된 상태면 저장 안 함
     try { localStorage.setItem(k, JSON.stringify(data)); } catch(e) {}
+    // ✅ Firebase 자동저장
+    try {
+      const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
+      const code = window.currentSchoolCode || null;
+      if (sid && code && window.db) {
+        window.db.ref(`schools/${code}/summerSubmit/${sid}/bookRecords`).set(data).catch(()=>{});
+      }
+    } catch(e) {}
   }
 
   /* ── 편집 모달 HTML 삽입 ────────────────────────── */
