@@ -3192,13 +3192,17 @@ function svLoadState(forceSid) {
           });
         }
         // 행사/미션/도서감상 기록을 localStorage에도 동기화 (기존 렌더 함수 호환)
-        if (d.events) localStorage.setItem(`sv_event_records_v2_${sid}`, JSON.stringify(d.events));
-        if (d.bookRecords) localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
-        if (d.missionRecords) localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(d.missionRecords));
+        // ⚠️ teacher-preview에서는 localStorage 오염 방지를 위해 쓰지 않음
+        const isPreview = document.body.classList.contains('teacher-preview');
+        if (!isPreview) {
+          if (d.events) localStorage.setItem(`sv_event_records_v2_${sid}`, JSON.stringify(d.events));
+          if (d.bookRecords) localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
+          if (d.missionRecords) localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(d.missionRecords));
+        }
         setTimeout(() => {
           if (typeof restoreAll === 'function') restoreAll();
           if (typeof mrRestoreAll === 'function') mrRestoreAll();
-          // ✅ 도서 카드 제목/이모지 복원 (체크 상태 복원 후 실행)
+          // ✅ 도서 카드 제목/이모지 복원 (학생 모드에서만, teacher-preview 가드는 함수 내부에 있음)
           if (typeof window.svBceApplySaved === 'function') window.svBceApplySaved();
         }, 150);
       } else {
@@ -3589,13 +3593,31 @@ function viewStudentPlan(sid, name) {
             if (d.checks[i]) { el.classList.add('sv-done'); const b=el.querySelector('.sv-check-box'); if(b) b.textContent='✓'; }
           });
         }
-        // ✅ 도서 체크
+        // ✅ 도서 체크 + 제목/이모지 복원 (bookRecords 우선)
+        if (d.bookRecords) localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
         if (d.books) {
           document.querySelectorAll('#summerView .sv-book-card').forEach((el, i) => {
+            // bookRecords에서 제목/이모지 먼저 복원
+            if (d.bookRecords && d.bookRecords[i]) {
+              const e = d.bookRecords[i];
+              const titleEl = el.querySelector('.sv-book-title');
+              const genreEl = el.querySelector('.sv-book-genre');
+              if (titleEl && e.title) titleEl.textContent = e.title;
+              if (genreEl && e.genre) genreEl.textContent = e.genre;
+              if (e.emoji) el.dataset.origEmoji = e.emoji;
+            }
             if (d.books[i] && d.books[i].done) {
               el.classList.add('sv-done');
               el.style.opacity='0.6'; el.style.background='#E8FFE8';
-              const em=el.querySelector('.sv-book-emoji'); if(em) { el.dataset.origEmoji=em.textContent; em.textContent='✅'; }
+              const em=el.querySelector('.sv-book-emoji');
+              if(em) { if(!el.dataset.origEmoji) el.dataset.origEmoji=em.textContent; em.textContent='✅'; }
+            } else if (d.bookRecords && d.bookRecords[i] && d.bookRecords[i].emoji) {
+              // 체크 안 된 카드는 원래 이모지로
+              const em=el.querySelector('.sv-book-emoji');
+              if(em) em.textContent = d.bookRecords[i].emoji;
+            }
+            if (typeof svBceUpdateBadge === 'function' && d.bookRecords && d.bookRecords[i]) {
+              svBceUpdateBadge(el, d.bookRecords[i]);
             }
           });
         }
@@ -3604,8 +3626,6 @@ function viewStudentPlan(sid, name) {
           localStorage.setItem(`sv_event_records_v2_${sid}`, JSON.stringify(d.events));
           restoreAll();
         }
-        // ✅ 책 감상 기록
-        if (d.bookRecords) localStorage.setItem(`sv_book_records_v1_${sid}`, JSON.stringify(d.bookRecords));
         // ✅ 미션 기록
         if (d.missionRecords) localStorage.setItem(`sv_mission_records_v1_${sid}`, JSON.stringify(d.missionRecords));
         else if (d.missions) {
@@ -3622,18 +3642,12 @@ function viewStudentPlan(sid, name) {
 }
 
 function exitTeacherPreview() {
-  const sid = window.currentSid;
-
-  // ① localStorage 완전 삭제 (sid, guest, null 키 모두)
-  const prefixes = sid ? [`sv_${sid}_`, `sv_null_`, `sv_guest_`] : [`sv_null_`, `sv_guest_`];
-  const extraBases = ['sv_mission_records_v1_', 'sv_event_records_v2_', 'sv_book_records_v1_'];
-  const extraSuffixes = sid ? [sid, 'null', 'guest'] : ['null', 'guest'];
-
-  // prefix 기반 삭제
-  Object.keys(localStorage).filter(k => prefixes.some(p => k.startsWith(p)))
+  // ① localStorage 완전 청소 — 패턴 기반으로 모든 sv_ 관련 키 삭제
+  // (여러 학생을 순서대로 미리볼 때 이전 학생 데이터가 남는 문제 방지)
+  const svPrefixes = ['sv_', 'sv_event_records_v2_', 'sv_book_records_v1_', 'sv_mission_records_v1_'];
+  Object.keys(localStorage)
+    .filter(k => svPrefixes.some(p => k.startsWith(p)))
     .forEach(k => localStorage.removeItem(k));
-  // extra 키 삭제
-  extraBases.forEach(base => extraSuffixes.forEach(s => localStorage.removeItem(base + s)));
 
   // ② 도서 카드 UI 초기화
   document.querySelectorAll('#summerView .sv-book-card').forEach(el => {
@@ -4191,6 +4205,8 @@ function updateCardUI(key, el, entries) {
 
 /* ── 초기 복원 ──────────────────────────────────── */
 function restoreAll() {
+  // teacher-preview에서는 localStorage 기반 복원 안 함 (enterTeacherPreview에서 직접 처리)
+  if (document.body.classList.contains('teacher-preview')) return;
   // 기존 v1 데이터 마이그레이션
   try {
     const old = JSON.parse(localStorage.getItem('sv_event_records_v1')||'{}');
@@ -4411,6 +4427,8 @@ function svMissionUpdateProgress(card, missionIdx) {
 }
 
 function svMissionRestoreAll() {
+  // teacher-preview에서는 localStorage 기반 복원 안 함
+  if (document.body.classList.contains('teacher-preview')) return;
   document.querySelectorAll('#summerView .sv-mission-card').forEach((card, missionIdx) => {
     svMissionUpdateProgress(card, missionIdx);
   });
@@ -5131,7 +5149,8 @@ if (document.readyState === 'loading') {
     });
   }
 
-  /* ── 저장된 편집 데이터 복원 (edits 객체 직접 적용) ── */
+  /* ── 저장된 편집 데이터 복원 ──────────────────────── */
+  /* ── 카드 편집 데이터 실제 적용 ── */
   function _svBceApplyEdits(edits) {
     document.querySelectorAll('#summerView .sv-book-card').forEach((card, idx) => {
       const e = edits[idx];
@@ -5145,7 +5164,6 @@ if (document.readyState === 'loading') {
         card.dataset.origEmoji = e.emoji;
         if (emojiEl && !card.classList.contains('sv-done')) emojiEl.textContent = e.emoji;
       }
-      // 읽음 상태 복원
       if (e.done) {
         card.classList.add('sv-done');
         card.style.opacity = '0.6'; card.style.background = '#E8FFE8';
@@ -5155,8 +5173,9 @@ if (document.readyState === 'loading') {
     });
   }
 
-  /* ── 저장된 편집 데이터 복원 (Firebase 우선) ──────── */
   window.svBceApplySaved = function() {
+    // 교사 미리보기에서는 별도 처리 (enterTeacherPreview에서 직접 호출)
+    if (document.body.classList.contains('teacher-preview')) return;
     const sid = window.currentSid || (typeof currentSid !== 'undefined' && currentSid) || null;
     if (!sid) return;
     const code = window.currentSchoolCode || null;
@@ -5165,7 +5184,6 @@ if (document.readyState === 'loading') {
       window.db.ref(`schools/${code}/summerSubmit/${sid}/bookRecords`).once('value', snap => {
         const d = snap.val();
         if (d && Object.keys(d).length > 0) {
-          // Firebase 데이터를 localStorage에도 동기화
           const k = bookEditKey();
           if (k) try { localStorage.setItem(k, JSON.stringify(d)); } catch(e2) {}
           _svBceApplyEdits(d);
